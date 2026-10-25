@@ -37,21 +37,21 @@ Then search by plain description, in the browser or from an agent:
 $ asset-archaeologist find "a red apple" "a birthday cake" "pizza" -k 2
 
 ## a red apple
-- apple-half  [0.10 x 0.20 x 0.19 m, 124 tris, library/Kenney/kenney_food-kit]
-    pack: D:\Assets\library\Kenney\kenney_food-kit.zip  file: Models/GLB format/apple-half.glb
-    thumb: D:sset-archaeologist\packs\library\Kenney\kenney_food-kitpple-half.png
-    sheet: D:sset-archaeologist\packs\library\Kenney\kenney_food-kitpple-half.sheet.png
-- apple  [0.20 x 0.20 x 0.19 m, 136 tris, library/Kenney/kenney_food-kit]
+- apple-half  [0.10 x 0.20 x 0.19 m, 124 tris, Assets/Kenney/kenney_food-kit]
+    pack: D:/Assets/Kenney/kenney_food-kit.zip  file: Models/GLB format/apple-half.glb
+    thumb: .../packs/Assets/Kenney/kenney_food-kit/apple-half.png
+    sheet: .../packs/Assets/Kenney/kenney_food-kit/apple-half.sheet.png
+- apple  [0.20 x 0.20 x 0.19 m, 136 tris, Assets/Kenney/kenney_food-kit]
     ...
 
 ## a birthday cake
-- cake-birthday  [0.64 x 0.64 x 0.36 m, 1146 tris, library/Kenney/kenney_food-kit]
-- cake  [0.64 x 0.64 x 0.27 m, 750 tris, library/Kenney/kenney_food-kit]
+- cake-birthday  [0.64 x 0.64 x 0.36 m, 1146 tris, Assets/Kenney/kenney_food-kit]
+- cake  [0.64 x 0.64 x 0.27 m, 750 tris, Assets/Kenney/kenney_food-kit]
     ...
 
 ## pizza
-- pizza  [0.84 x 0.84 x 0.04 m, 1208 tris, library/Kenney/kenney_food-kit]
-- pie  [0.95 x 0.95 x 0.15 m, 292 tris, library/Kenney/kenney_food-kit]
+- pizza  [0.84 x 0.84 x 0.04 m, 1208 tris, Assets/Kenney/kenney_food-kit]
+- pie  [0.95 x 0.95 x 0.15 m, 292 tris, Assets/Kenney/kenney_food-kit]
     ...
 ```
 
