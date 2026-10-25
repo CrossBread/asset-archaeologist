@@ -1,0 +1,22 @@
+{
+ "note": "Labels every model is scored against (SigLIP, prompt 'a 3D model of {label}'). To change them, copy this file to tag_set.json next to your config.toml, edit it and run: asset-archaeologist tag",
+ "object": [
+  "a person", "a character", "a monster", "a goblin", "an animal", "a bird", "a fish", "an insect",
+  "a sword", "an axe", "a hammer", "a spear", "a bow", "an arrow", "a shield", "a gun", "a staff", "a dagger",
+  "a helmet", "armour", "clothing", "a hat", "a backpack", "jewellery",
+  "a house", "a hut", "a tent", "a tower", "a castle", "a wall section", "a fence", "a gate", "a door", "a window",
+  "a roof piece", "a floor tile", "stairs", "a bridge", "a ladder", "a pillar", "a platform", "a ruin",
+  "a tree", "a bush", "a rock", "grass", "a flower", "a mushroom", "a log", "a stump", "a cliff", "terrain",
+  "a car", "a truck", "a boat", "a cart", "a wagon", "an aircraft", "a spaceship", "a bicycle",
+  "a chair", "a table", "a bed", "a shelf", "a cabinet", "a bench", "a throne",
+  "a barrel", "a crate", "a chest", "a sack", "a basket", "a bucket", "a pot", "a bottle", "a jar", "a cup", "a plate", "a bowl",
+  "food", "fruit", "a vegetable", "meat", "bread", "a cake", "a drink",
+  "a tool", "a pickaxe", "a shovel", "a saw", "a kitchen utensil", "cutlery",
+  "a lamp", "a torch", "a candle", "a campfire", "a lantern",
+  "a sign", "a banner", "a flag", "a statue", "a totem", "a skull", "bones", "a cage", "a trap", "a weapon rack",
+  "a book", "a scroll", "a key", "a coin", "a gem", "a potion", "a toy", "a pipe", "a rope", "a chain", "spikes",
+  "a machine", "a computer", "a screen", "a vending machine", "a container", "a pipe section", "a cable"
+ ],
+ "material": ["wood", "stone", "metal", "cloth", "leather", "bone", "glass", "plastic", "paper", "food", "plants", "fur", "rope"],
+ "setting": ["medieval fantasy", "goblin or orc camp", "sci-fi", "modern city", "post-apocalyptic", "horror", "cartoon food", "nature", "pirate", "western", "farm", "kitchen", "military", "space"]
+}

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asset Archaeologist</title>
+<style>
+:root { --bg:#f6f5f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6c6a64; --line:#e2dfd8; --accent:#b4532a; --tile:#ececec; --ok:#2f7d4f; --bad:#b3261e; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161614; --panel:#201f1d; --ink:#ecebe6; --muted:#a19e96; --line:#34322e; --accent:#e0855a; --tile:#2a2926; --ok:#6cc08b; --bad:#f2948c; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:14px 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+header h1 { font-size:17px; margin:0 12px 0 0; letter-spacing:.2px; }
+input, select, button { font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+#q { flex:1 1 320px; min-width:200px; }
+button { cursor:pointer; }
+button:disabled { opacity:.5; cursor:default; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.size { width:84px; }
+#status { color:var(--muted); font-size:13px; padding:10px 20px 0; }
+#scanbar { display:none; margin:10px 20px 0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); font-size:13px; }
+.bar { height:8px; background:var(--tile); border-radius:99px; overflow:hidden; margin:6px 0; }
+.bar > div { height:100%; width:0; background:var(--accent); transition:width .4s; }
+#grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:12px; padding:14px 20px 40px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; cursor:pointer; }
+.card:hover { border-color:var(--accent); }
+.card img { width:100%; aspect-ratio:1; display:block; background:var(--tile); }
+.card .n { padding:7px 9px 0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card .p { padding:0 9px 8px; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink); padding:0; width:min(1080px, 96vw); }
+dialog::backdrop { background:rgba(0,0,0,.45); }
+.dlg { padding:16px 18px 18px; }
+.dlg img { width:100%; border-radius:8px; background:var(--tile); display:block; }
+.dlg h2 { margin:12px 0 4px; font-size:18px; word-break:break-all; }
+.meta { color:var(--muted); font-size:13px; margin:2px 0; word-break:break-all; }
+.row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+.tags span { display:inline-block; font-size:12px; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin:4px 4px 0 0; color:var(--muted); }
+#packs { padding:4px 20px 40px; display:none; }
+#packs a { color:var(--accent); }
+#packs li { margin:4px 0; }
+/* settings */
+#settings { display:none; max-width:820px; margin:16px auto 60px; padding:0 20px; }
+#settings h2 { font-size:20px; margin:8px 0 6px; }
+#settings h3 { font-size:15px; margin:22px 0 6px; }
+#settings p { margin:6px 0; color:var(--muted); }
+.box { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:12px 0; }
+.libs { list-style:none; padding:0; margin:8px 0; }
+.libs li { display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); word-break:break-all; }
+.libs li span { flex:1; }
+.field { display:flex; gap:8px; align-items:center; margin:6px 0; flex-wrap:wrap; }
+.field label { width:150px; color:var(--muted); font-size:13px; }
+.field input { flex:1; min-width:220px; }
+.ok { color:var(--ok); } .bad { color:var(--bad); }
+#log { font:12px/1.5 ui-monospace, Consolas, monospace; white-space:pre-wrap; color:var(--muted); max-height:180px; overflow:auto; margin-top:8px; }
+code { font:12.5px ui-monospace, Consolas, monospace; background:var(--tile); padding:1px 5px; border-radius:5px; word-break:break-all; }
+@media (max-width:560px) { header { padding:12px 16px; } #grid { padding:12px 16px 32px; grid-template-columns:repeat(2, 1fr); } .field label { width:100%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Asset Archaeologist</h1>
+  <input id="q" placeholder="Describe what you need: a wooden barrel, a red apple, a sci-fi crate..." autofocus>
+  <select id="pack"><option value="">All packs</option></select>
+  <input id="min" class="size" placeholder="min m" inputmode="decimal" title="Largest side at least (metres)">
+  <input id="max" class="size" placeholder="max m" inputmode="decimal" title="Largest side at most (metres)">
+  <select id="by" title="What the words are matched against">
+    <option value="both">Picture + name</option><option value="image">Picture</option><option value="name">Name</option>
+  </select>
+  <button class="primary" id="go">Search</button>
+  <button id="showPacks">Packs</button>
+  <button id="showSettings">Settings</button>
+</header>
+<div id="scanbar">
+  <b id="scanTitle">Scanning</b> <span id="scanText"></span>
+  <div class="bar"><div id="scanAll"></div></div>
+  <span id="scanPack" class="meta"></span>
+  <div class="bar"><div id="scanOne"></div></div>
+</div>
+<div id="status">Loading…</div>
+<div id="grid"></div>
+<ul id="packs"></ul>
+
+<section id="settings">
+  <h2 id="setTitle">Settings</h2>
+  <p id="welcome" style="display:none">Welcome. Pick the folders where your asset packs are (zips, Unity packages, Blender files or
+  folders of models), then press <b>Start scan</b>. Every model is drawn from five sides and indexed so you, and any AI agent
+  you use, can find it by describing it. Nothing leaves this computer.</p>
+
+  <div class="box">
+    <h3 style="margin-top:0">1. Library folders</h3>
+    <p>Folders that hold your asset packs. Sub-folders are included.</p>
+    <ul class="libs" id="libs"></ul>
+    <div class="row">
+      <button class="primary" id="browseLib">Add a folder…</button>
+      <input id="libPath" placeholder="or type / paste a folder path" style="flex:1; min-width:220px">
+      <button id="addLib">Add</button>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3 style="margin-top:0">2. Where things go</h3>
+    <div class="field"><label for="output">Thumbnails &amp; index</label><input id="output"><button data-pick="output">…</button></div>
+    <p>About 230 KB per model (a 1,000-model library is about 230 MB).</p>
+    <div class="field"><label for="work">Scratch folder</label><input id="work"><button data-pick="work">…</button></div>
+    <p>Packs are unpacked here while they render, then deleted. Pick a drive with a few GB free.</p>
+  </div>
+
+  <div class="box">
+    <h3 style="margin-top:0">3. Blender</h3>
+    <div id="blenderInfo"></div>
+    <div class="field"><label for="blender">Blender program</label><input id="blender" placeholder="empty = find it automatically"></div>
+    <div class="field"><label for="procs">Blender processes</label><input id="procs" type="number" min="1" max="16" style="max-width:90px; flex:0"></div>
+    <p>More processes render faster but use more memory. 2–3 suits most computers.</p>
+  </div>
+
+  <div class="row">
+    <button class="primary" id="save">Save settings</button>
+    <span id="saved" class="meta"></span>
+  </div>
+
+  <div class="box">
+    <h3 style="margin-top:0">4. Scan</h3>
+    <p>The first scan downloads the search model (~800 MB, once). Rendering takes about 0.6 s per model with 3 Blender
+    processes on a laptop with an NVIDIA GPU; slower without one. You can stop at any time; the next scan continues
+    where it left off. You can search while it runs.</p>
+    <div class="row">
+      <button id="plan">Find packs</button>
+      <button class="primary" id="startScan">Start scan</button>
+      <button id="stopScan">Stop after this pack</button>
+      <span id="planText" class="meta"></span>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <div class="box">
+    <h3 style="margin-top:0">For AI agents</h3>
+    <p>Point an agent at <a id="llmsLink" href="/llms.txt" target="_blank"><code id="llmsUrl"></code></a> or give it this command:</p>
+    <p><code id="cliCmd"></code></p>
+    <p class="meta" id="cfgFile"></p>
+  </div>
+  <div class="row"><button id="closeSettings">Back to search</button></div>
+</section>
+
+<dialog id="dlg"><div class="dlg">
+  <img id="dSheet" alt="">
+  <h2 id="dName"></h2>
+  <div class="meta" id="dPack"></div>
+  <div class="meta" id="dModel"></div>
+  <div class="meta" id="dSize"></div>
+  <div class="tags" id="dTags"></div>
+  <div class="row">
+    <button class="primary" id="dSimilar">More like this</button>
+    <button id="dCopy">Copy paths</button>
+    <button id="dClose">Close</button>
+  </div>
+</div></dialog>
+<script>
+const $ = id => document.getElementById(id);
+let current = null, cfg = null, ready = false, lastRunning = false;
+const fmt = s => (s || []).map(v => v.toFixed(2)).join(" × ") + " m";
+const api = (path, body) => fetch(path, body === undefined ? {} : {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  .then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.statusText); return j; });
+
+function card(r) {
+  const d = document.createElement("div");
+  d.className = "card";
+  d.innerHTML = `<img loading="lazy" alt=""><div class="n"></div><div class="p"></div>`;
+  d.querySelector("img").src = r.thumb_url;
+  d.querySelector(".n").textContent = r.name;
+  d.querySelector(".p").textContent = r.pack.split("/").slice(-2).join(" / ");
+  d.title = `${r.name}\n${r.pack}\n${fmt(r.size_m)}`;
+  d.onclick = () => open(r);
+  return d;
+}
+
+function view(which) {
+  $("settings").style.display = which === "settings" ? "block" : "none";
+  $("grid").style.display = which === "grid" ? "grid" : "none";
+  $("packs").style.display = which === "packs" ? "block" : "none";
+  $("status").style.display = which === "settings" ? "none" : "block";
+}
+
+function show(list, label) {
+  view("grid");
+  const g = $("grid"); g.innerHTML = "";
+  list.forEach(r => g.appendChild(card(r)));
+  $("status").textContent = label;
+}
+
+function params() {
+  const p = new URLSearchParams({ q: $("q").value.trim(), k: 60, by: $("by").value });
+  if ($("pack").value) p.set("pack", $("pack").value);
+  if ($("min").value) p.set("min_m", $("min").value);
+  if ($("max").value) p.set("max_m", $("max").value);
+  return p;
+}
+
+async function search() {
+  const q = $("q").value.trim();
+  if (!q) return;
+  history.replaceState(null, "", "?" + params().toString());
+  if (!ready) { view("grid"); $("status").textContent = "The search model is still loading (about 25 s the first time)…"; await waitReady(); }
+  $("status").textContent = "Searching…";
+  const t = performance.now();
+  try {
+    const r = await api("/api/search?" + params());
+    show(r, r.length ? `${r.length} results for “${q}” in ${Math.round(performance.now() - t)} ms`
+                     : "No results. Nothing is indexed yet? Open Settings and start a scan.");
+  } catch (e) { $("status").textContent = "Search failed: " + e.message; }
+}
+
+async function similar(r) {
+  $("dlg").close();
+  $("status").textContent = "Finding similar…";
+  const res = await api(`/api/similar?pack=${encodeURIComponent(r.pack)}&model=${encodeURIComponent(r.model)}&k=60`);
+  show(res, `${res.length} models that look like “${r.name}”`);
+}
+
+function open(r) {
+  current = r;
+  $("dSheet").src = r.sheet_url;
+  $("dName").textContent = r.name;
+  $("dPack").textContent = "Pack: " + (r.pack_file || r.pack);
+  $("dModel").textContent = "File in pack: " + r.model;
+  $("dSize").textContent = `Size ${fmt(r.size_m)} · ${(r.tris || 0).toLocaleString()} triangles · texture: ${r.texture}`;
+  const tags = r.tags ? [...new Set(Object.values(r.tags).flat().map(t => t.label))] : [];
+  $("dTags").innerHTML = "";
+  tags.forEach(t => { const s = document.createElement("span"); s.textContent = t; $("dTags").appendChild(s); });
+  $("dlg").showModal();
+}
+
+$("dSimilar").onclick = () => similar(current);
+$("dClose").onclick = () => $("dlg").close();
+$("dCopy").onclick = () => navigator.clipboard.writeText(
+  `${current.name}\npack: ${current.pack_file}\nfile: ${current.model}\nthumb: ${current.thumb}\nsheet: ${current.sheet}`);
+$("go").onclick = search;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+
+async function loadPacks() {
+  const packs = await api("/api/packs");
+  const sel = $("pack"), keep = sel.value;
+  sel.innerHTML = '<option value="">All packs</option>';
+  packs.forEach(p => { const o = document.createElement("option"); o.value = p.pack; o.textContent = p.pack; sel.appendChild(o); });
+  sel.value = keep;
+  return packs;
+}
+
+$("showPacks").onclick = async () => {
+  const packs = await loadPacks();
+  const ul = $("packs"); ul.innerHTML = "";
+  packs.forEach(p => {
+    const li = document.createElement("li");
+    li.innerHTML = `<b></b> — ${p.models} models · `;
+    li.querySelector("b").textContent = p.pack;
+    p.contact_sheet_urls.forEach((c, i) => {
+      const a = document.createElement("a"); a.href = c; a.target = "_blank";
+      a.textContent = `sheet ${i + 1}`; li.appendChild(a); li.appendChild(document.createTextNode(" "));
+    });
+    const b = document.createElement("a"); b.href = "#"; b.textContent = "· search in this pack";
+    b.onclick = e => { e.preventDefault(); $("pack").value = p.pack; view("grid"); $("q").focus(); };
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+  view("packs");
+  $("status").textContent = `${packs.length} packs`;
+};
+
+// ---------- settings ----------
+function renderLibs() {
+  const ul = $("libs"); ul.innerHTML = "";
+  if (!cfg.libraries.length) { const li = document.createElement("li"); li.innerHTML = '<span class="meta">No folders yet.</span>'; ul.appendChild(li); }
+  cfg.libraries.forEach((p, i) => {
+    const li = document.createElement("li");
+    const s = document.createElement("span"); s.textContent = p;
+    if ((cfg.libraries_missing || []).includes(p)) { s.className = "bad"; s.textContent += "  (folder not found)"; }
+    const b = document.createElement("button"); b.textContent = "Remove";
+    b.onclick = () => { cfg.libraries.splice(i, 1); renderLibs(); $("saved").textContent = "Not saved yet."; };
+    li.append(s, b); ul.appendChild(li);
+  });
+}
+
+function fillSettings(c) {
+  cfg = c;
+  renderLibs();
+  $("output").value = c.output || c.output_dir;
+  $("work").value = c.work || c.work_dir;
+  $("blender").value = c.blender || "";
+  $("procs").value = c.procs;
+  const bi = $("blenderInfo");
+  bi.innerHTML = "";
+  const p = document.createElement("p");
+  if (c.blender_ok) { p.className = "ok"; p.textContent = `Found Blender ${c.blender_version} at ${c.blender_found}`; }
+  else if (c.blender_found) { p.className = "bad"; p.textContent = `Blender ${c.blender_version || "?"} at ${c.blender_found} is too old: 4.2 or newer is needed. ${c.blender_help}`; }
+  else { p.className = "bad"; p.textContent = `Blender was not found. ${c.blender_help}. Then come back here and press Save settings (or type its path below).`; }
+  bi.appendChild(p);
+  $("llmsUrl").textContent = location.origin + "/llms.txt";
+  $("cliCmd").textContent = `${c.cli} find "wooden barrel" "red apple" --json`;
+  $("cfgFile").textContent = "Settings file: " + c.config_file;
+}
+
+async function openSettings() {
+  fillSettings(await api("/api/config"));
+  $("welcome").style.display = cfg.libraries.length ? "none" : "block";
+  $("setTitle").textContent = cfg.libraries.length ? "Settings" : "Set up Asset Archaeologist";
+  view("settings");
+}
+
+async function addLib(p) {
+  p = (p || "").trim();
+  if (!p) return;
+  if (!cfg.libraries.includes(p)) cfg.libraries.push(p);
+  renderLibs();
+  await save();
+}
+
+async function pick(title) {
+  try { return (await api("/api/pick-folder", { title })).path; } catch (e) { return ""; }
+}
+
+$("browseLib").onclick = async () => {
+  $("browseLib").disabled = true;
+  $("saved").textContent = "A folder chooser opened (it may be behind this window)…";
+  const p = await pick("Choose a folder with asset packs");
+  $("browseLib").disabled = false;
+  if (p) addLib(p); else $("saved").textContent = "No folder chosen. You can also paste a path into the box.";
+};
+$("addLib").onclick = () => { addLib($("libPath").value); $("libPath").value = ""; };
+document.querySelectorAll("[data-pick]").forEach(b => b.onclick = async () => {
+  const p = await pick("Choose a folder"); if (p) { $(b.dataset.pick).value = p; $("saved").textContent = "Not saved yet."; }
+});
+
+async function save() {
+  try {
+    const c = await api("/api/config", { libraries: cfg.libraries, output: $("output").value, work: $("work").value,
+                                          blender: $("blender").value, procs: $("procs").value || 2 });
+    fillSettings(c);
+    $("saved").textContent = "Saved.";
+    return true;
+  } catch (e) { $("saved").textContent = "Not saved: " + e.message; return false; }
+}
+$("save").onclick = save;
+
+$("plan").onclick = async () => {
+  if (!(await save())) return;
+  $("planText").textContent = "Looking for packs…";
+  try { const r = await api("/api/scan/plan"); $("planText").textContent = `${r.packs} packs found, ${r.todo} still to scan.`; }
+  catch (e) { $("planText").textContent = e.message; }
+};
+$("startScan").onclick = async () => {
+  if (!(await save())) return;
+  try { await api("/api/scan/start", {}); $("planText").textContent = "Scan started."; poll(); }
+  catch (e) { $("planText").textContent = "Could not start: " + e.message; }
+};
+$("stopScan").onclick = async () => {
+  try { await api("/api/scan/stop", {}); $("planText").textContent = "Stopping after the current pack…"; }
+  catch (e) { $("planText").textContent = e.message; }
+};
+$("showSettings").onclick = openSettings;
+$("closeSettings").onclick = () => { view("grid"); refreshStatus(); };
+
+// ---------- status ----------
+function pct(a, b) { return b ? Math.min(100, Math.round(100 * a / b)) + "%" : "0%"; }
+async function poll() {
+  let s;
+  try { s = await api("/api/scan/status"); } catch (e) { return setTimeout(poll, 5000); }
+  const bar = $("scanbar");
+  if (s.running) {
+    bar.style.display = "block";
+    $("scanTitle").textContent = "Scanning";
+    $("scanText").textContent = `pack ${s.pack_index} of ${s.packs_total} · ${s.models_done.toLocaleString()} models done` +
+      (s.failed_packs ? ` · ${s.failed_packs} packs failed` : "");
+    $("scanAll").style.width = pct(Math.max(0, s.pack_index - 1), s.packs_total);
+    $("scanPack").textContent = `${s.pack} — ${s.pack_phase === "embedding" ? "indexing" : `rendering ${s.pack_rendered} of ${s.pack_models} files`}`;
+    $("scanOne").style.width = pct(s.pack_rendered, s.pack_models);
+  } else if (lastRunning || s.error || s.note) {
+    bar.style.display = "block";
+    $("scanTitle").textContent = s.error ? "Scan failed" : "Scan finished";
+    $("scanText").textContent = s.error || s.note || `${(s.models_done || 0).toLocaleString()} models from ${s.packs_total} packs`;
+    $("scanAll").style.width = "100%"; $("scanOne").style.width = "100%"; $("scanPack").textContent = "";
+    if (lastRunning) { loadPacks(); refreshStatus(); }
+  }
+  $("log").textContent = (s.log || []).join("\n");
+  $("startScan").disabled = !!s.running;
+  $("stopScan").disabled = !s.from_page;
+  lastRunning = !!s.running;
+  setTimeout(poll, s.running ? 1500 : 6000);
+}
+
+async function waitReady() {
+  for (;;) {
+    const p = await api("/api/ping").catch(() => ({}));
+    if (p.ready) { ready = true; return; }
+    if (p.model_error) { $("status").textContent = p.model_error; throw new Error(p.model_error); }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
+async function refreshStatus() {
+  const packs = await loadPacks();
+  const total = packs.reduce((s, p) => s + p.models, 0);
+  if ($("settings").style.display === "block") return;
+  $("status").textContent = total ? `${total.toLocaleString()} models in ${packs.length} packs. Describe what you need.`
+    : "Nothing is indexed yet. Open Settings to choose your library folders and start a scan.";
+}
+
+(async () => {
+  view("grid");
+  const c = await api("/api/config");
+  await refreshStatus();
+  poll();
+  waitReady().catch(() => {});
+  if (!c.libraries.length) return openSettings();
+  const u = new URLSearchParams(location.search);
+  if (u.get("q")) {
+    $("q").value = u.get("q");
+    ["pack", "by"].forEach(k => u.get(k) && ($(k).value = u.get(k)));
+    if (u.get("min_m")) $("min").value = u.get("min_m");
+    if (u.get("max_m")) $("max").value = u.get("max_m");
+    search();
+  }
+})();
+</script>
+</body>
+</html>
