@@ -75,15 +75,17 @@ class Library:
                 continue
             key = index["pack"]
             by_model = {e["model"]: e for e in index["models"]}
+            # each d[...] access decompresses the whole array: read each one once
+            pack_ids, search, names = d["ids"], d["search"], d["names"]
             n = 0
-            for i, m in enumerate(d["ids"]):
+            for i, m in enumerate(pack_ids):
                 e = by_model.get(str(m))
                 if not e or "thumb" not in e:
                     continue
                 keys.append(key)
                 ids.append(str(m))
-                img.append(d["search"][i])
-                nam.append(d["names"][i])
+                img.append(search[i])
+                nam.append(names[i])
                 rows.append(e)
                 n += 1
             packs[key] = {"pack": key, "file": index.get("pack_path"), "models": n,

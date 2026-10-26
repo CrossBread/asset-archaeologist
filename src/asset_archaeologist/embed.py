@@ -146,7 +146,8 @@ def embed_pack(cfg: Config, index_file: Path):
         redone = {m.split("#")[0] for m in ids}
         keep = [i for i, m in enumerate(old["ids"]) if str(m).split("#")[0] not in redone]
         if keep:
-            ids = [str(old["ids"][i]) for i in keep] + ids
+            old_ids = old["ids"]  # each old[...] access decompresses the whole array
+            ids = [str(old_ids[i]) for i in keep] + ids
             views = np.concatenate([old["views"][keep].astype(np.float32), views])
             search = np.concatenate([old["search"][keep].astype(np.float32), search])
             names = np.concatenate([old["names"][keep].astype(np.float32), names])
