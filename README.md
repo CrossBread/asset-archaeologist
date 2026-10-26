@@ -1,6 +1,4 @@
-<!-- Logo / wordmark: uncomment when docs/logo.png exists.
-<p align="center"><img src="docs/logo.png" alt="Asset Archaeologist" width="420"></p>
--->
+<p align="center"><img src="docs/logo.png" alt="Asset Archaeologist: find the human-made art you already own" width="640"></p>
 
 # Asset Archaeologist
 
