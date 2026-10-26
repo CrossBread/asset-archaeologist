@@ -1,7 +1,7 @@
 """Local browser page and search API (http://127.0.0.1:<port>/).
 
 Keeps SigLIP and every pack's embeddings in memory, so a search takes milliseconds once the
-model has loaded (~25 s the first time). Picks up newly embedded packs on its own.
+model has loaded (~25 s the first time). Picks up newly embedded packs on its own (looks every 30 s).
 Listens on 127.0.0.1 only; nothing leaves the machine.
 
 API (JSON):
@@ -18,6 +18,7 @@ Settings and scanning (used by the page):
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -37,7 +38,7 @@ PAGE = PACKAGE_DIR / "web" / "index.html"
 
 
 class Library:
-    """All embedded packs, stacked; reloaded when an _embeddings.npz changes."""
+    """All embedded packs, stacked; reloaded when a pack's _index.json or _embeddings.npz changes."""
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -48,35 +49,51 @@ class Library:
         self.img = self.nam = np.zeros((0, embed.DIM), np.float32)
         self.load()
 
-    def _stamp(self):
+    CHECK_EVERY = 30  # seconds between looks for newly embedded packs
+
+    def _packs(self):
+        """(index, npz) for every pack folder. Stops descending at a folder holding _index.json:
+        below it are only that pack's pictures (hundreds of thousands of files in a big library)."""
         d = self.cfg.packs_dir
+        out = []
         if not d.exists():
-            return ()
-        return tuple(sorted((str(p), p.stat().st_mtime) for p in d.rglob("_embeddings.npz")))
+            return out
+        for dirpath, dirnames, filenames in os.walk(d):
+            if "_index.json" in filenames:
+                dirnames[:] = []
+                out.append((Path(dirpath) / "_index.json", Path(dirpath) / "_embeddings.npz"))
+        return sorted(out)
+
+    @staticmethod
+    def _stamp(packs):
+        def mtime(p):
+            try:
+                return p.stat().st_mtime
+            except OSError:  # missing, or removed since the walk (a pack being redone)
+                return 0
+        return tuple((str(i), mtime(i), mtime(n)) for i, n in packs)
 
     def load(self, force=False):
-        if not force and time.time() - self.checked < 2:
+        if not force and self.stamp is not None and time.time() - self.checked < self.CHECK_EVERY:
             return
         self.checked = time.time()
-        stamp = self._stamp()
+        found = self._packs()
+        stamp = self._stamp(found)
         if stamp == self.stamp:
             return
         keys, ids, img, nam, rows, packs = [], [], [], [], [], {}
-        for npz_s, _ in stamp:
-            npz = Path(npz_s)
-            ipath = npz.parent / "_index.json"
-            if not ipath.exists():
+        for ipath, npz in found:
+            if not npz.exists():
                 continue
             try:
                 index = json.loads(ipath.read_text("utf-8"))
-                d = np.load(npz)
+                with np.load(npz) as d:  # each d[...] access decompresses the whole array: read each once
+                    pack_ids, search, names = d["ids"], d["search"], d["names"]
             except Exception as e:
                 print(f"skipping {npz}: {e}", flush=True)
                 continue
             key = index["pack"]
             by_model = {e["model"]: e for e in index["models"]}
-            # each d[...] access decompresses the whole array: read each one once
-            pack_ids, search, names = d["ids"], d["search"], d["names"]
             n = 0
             for i, m in enumerate(pack_ids):
                 e = by_model.get(str(m))

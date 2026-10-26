@@ -38,9 +38,10 @@ def cmd_scan(args):
         return 2
     if args.device:
         cfg.device = args.device
+    redo = scan.read_redo(cfg, args.redo) if args.redo else None
     try:
         r = scan.run(cfg, procs=args.procs, max_packs=args.max, paths=args.paths or None, force=args.force,
-                     limit=args.limit, only=args.only, keep=args.keep)
+                     limit=args.limit, only=args.only, keep=args.keep, redo=redo)
     except Exception as e:
         print(f"scan failed: {e}")
         return 1
@@ -131,6 +132,8 @@ def main(argv=None):
     s.add_argument("--procs", type=int, default=0, help="Blender processes at once (default: settings)")
     s.add_argument("--max", type=int, default=0, help="at most this many packs")
     s.add_argument("--force", action="store_true", help="redo packs that are already done")
+    s.add_argument("--redo", metavar="FILE",
+                   help="file listing packs (key or path, one per line) to render again from scratch")
     s.add_argument("--limit", type=int, default=0, help="first N models of each pack only (for trials)")
     s.add_argument("--only", default="", help="regex on the file path inside the pack: re-render matching models only")
     s.add_argument("--keep", action="store_true", help="keep the work folder (for debugging)")

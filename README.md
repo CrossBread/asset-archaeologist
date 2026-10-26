@@ -81,7 +81,17 @@ CC0. Rendered by Asset Archaeologist.*
   - `.blend`: one entry per Asset-Browser-marked asset, else per top-level object; falls back to
     the whole scene for huge scenes; ignores asset marks that cover only a small part of the file;
     switches files saved for video output back to still images.
-  - Missing textures render as plain material colour, not magenta.
+  - Missing textures render as plain material colour, not magenta; a missing reference falls
+    back to the pack's shared texture (Synty `Texture_01_A`, `MainTexture`, `atlas`, `palette`,
+    `colormap`) when there is one.
+  - Rigged characters no longer show the importer's bone-display ball: only meshes the file shows
+    are rendered.
+  - Modular characters (head, torso and hands as separate meshes on one skeleton) stay one model;
+    only full-size outfits on a shared skeleton are split.
+  - Colour-only packs (Kenney-style plain material colours) and vertex-colour packs render in
+    their colours, not grey.
+  - Texture-only downloads next to a pack (KitBash `kb3d_x.png.2k.zip` next to
+    `kb3d_x.blender.native.zip`) are used for its textures.
 - **One copy per product.** The same pack downloaded several ways (source files + Godot + Unity
   + Unreal) is rendered once, preferring the source files.
 - **Safe to stop.** Scans are resumable, partial re-renders merge into the existing pack, and
@@ -198,6 +208,7 @@ and look at).
 ```text
 asset-archaeologist scan              render + index every pack still to do (resumable)
 asset-archaeologist scan --plan       list what would be scanned
+asset-archaeologist scan --redo FILE  render the packs listed in FILE (key or path per line) again from scratch
 asset-archaeologist scan PATH...      only these packs   (--procs N, --force, --only REGEX, --limit N)
 asset-archaeologist serve --open      the browser page and API
 asset-archaeologist find "q1" "q2"    search (-k 8, --pack, --min-m, --max-m, --by, --json)

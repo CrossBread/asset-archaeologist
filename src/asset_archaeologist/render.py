@@ -13,10 +13,12 @@ assembles them under <output>/packs/<pack key>/:
     <model>.sheet.png    1024 x 512: 3/4 + front / back / left / top
     _contact_NN.png      every model in the pack with its name
     _index.json          per model: file in the pack, images, size in metres, triangles,
-                         texture status (and tags once embedded)
+                         texture status (textured | unity | atlas | colour | missing |
+                         untextured), image names it could not find (and tags once embedded)
 """
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import math
@@ -83,10 +85,41 @@ def choose_models(names):
     return sorted(best.values(), key=str.lower)
 
 
+# a pack's shared colour texture, most specific name first
+ATLAS_NAMES = [r"texture_0?1_?a?\.(png|tga)$",  # Synty
+               r"main_?tex(ture)?[^/]*\.(png|tga|jpg)$", r"atlas[^/]*\.(png|tga|jpg)$",
+               r"palette[^/]*\.(png|tga|jpg)$", r"colou?r_?map[^/]*\.(png|tga|jpg)$",
+               r"(^|[_-])main(_[a-z0-9])?\.(png|tga|jpg)$"]  # Animpic characters: T_Main_A..F
+NOT_ATLAS = re.compile(r"(normal|_nrm|emiss|mask|rough|metal|spec|_ao|height|lut|alpha|icon|preview|thumb|logo"
+                       r"|screenshot)", re.I)
+# texture-only downloads next to a pack (KitBash: kb3d_x.png.2k.zip next to kb3d_x.blender.native.zip)
+TEXTURE_ZIP = re.compile(r"(\.png\.|textures?|\.tga\.|\.jpg\.)", re.I)
+
+
 def find_atlas(textures):
-    """Synty-style packs: one shared colour atlas, used when a material has no texture."""
-    cands = [p for b, p in textures.items() if re.search(r"texture_0?1_?a?\.(png|tga)$", b)]
-    return sorted(cands, key=len)[0] if cands else None
+    """A pack's shared colour texture (Synty 'Texture_01_A', Animpic 'MainTexture', 'atlas',
+    'palette', 'colormap'), used for materials that have none or point at a file the pack lacks.
+    textures: {lower-case file name: path}."""
+    for pat in ATLAS_NAMES:
+        cands = [p for b, p in textures.items() if re.search(pat, b) and not NOT_ATLAS.search(b)]
+        if cands:
+            return sorted(cands, key=len)[0]
+    return None
+
+
+def texture_siblings(source: Path) -> list[Path]:
+    """Texture-only zips next to a pack file: the same name up to the first dot and 'png',
+    'tga', 'jpg' or 'textures' in the name."""
+    if not source.is_file():
+        return []
+    stem = source.name.split(".")[0]
+    out = []
+    for z in source.parent.glob(f"{glob.escape(stem)}*.zip"):
+        rest = z.name[len(stem):]  # '.png.2k.zip', '_Textures.zip'; not 'Kit.zip' (another pack)
+        if (z != source and z.name.lower().startswith(stem.lower()) and re.match(r"[._ -]", rest)
+                and TEXTURE_ZIP.search(rest)):
+            out.append(z)
+    return sorted(out)
 
 
 def model_out_rel(member: str) -> str:
@@ -341,6 +374,13 @@ def do_pack(cfg: Config, source: Path, procs: int = 0, limit: int = 0, only: str
     work = work_dir(cfg, key)
     src_dir = work / "src"
     names, guids, licences = unpack(source, src_dir)
+    for extra_zip in texture_siblings(source):  # images only, where texture lookup finds them
+        with zipfile.ZipFile(extra_zip) as z:
+            for info in z.infolist():
+                n = info.filename
+                if (PurePosixPath(n).suffix.lower() in IMAGES and _safe_member(n)
+                        and not (src_dir / "_tex" / n).exists()):
+                    z.extract(info, src_dir / "_tex")
     models = [m for m in choose_models(names) if not only or re.search(only, m, re.I)][: limit or None]
     textures = {}
     for p in src_dir.rglob("*"):
@@ -391,6 +431,8 @@ def do_pack(cfg: Config, source: Path, procs: int = 0, limit: int = 0, only: str
             parts = [(it["member"], rel, r)]
         for model, out_rel, v in parts:
             e = {"model": model, "name": PurePosixPath(out_rel).name}
+            if r.get("unresolved"):  # image names the file asks for that the pack does not have
+                e["unresolved"] = r["unresolved"]
             thumb, sheet = out_dir / f"{out_rel}.png", out_dir / f"{out_rel}.sheet.png"
             try:
                 compose(view_dir(work, model), thumb, sheet)
@@ -429,6 +471,29 @@ def do_pack(cfg: Config, source: Path, procs: int = 0, limit: int = 0, only: str
 
 def work_dir(cfg: Config, key: str) -> Path:
     return cfg.work_dir / work_name(key)
+
+
+def remove_output(cfg: Config, key: str):
+    """Delete a pack's pictures, index and embeddings, so a fresh render leaves nothing stale
+    (a file that became variants, a model renamed). Only the files its index lists, so another
+    pack's output in a folder below this one is kept."""
+    out_dir = cfg.packs_dir / key
+    ipath = index_path(cfg, key)
+    if not ipath.exists():
+        return
+    try:
+        index = json.loads(ipath.read_text("utf-8"))
+    except Exception:
+        index = {}
+    files = [c for c in index.get("contact_sheets", [])]
+    files += [e[k] for e in index.get("models", []) for k in ("thumb", "sheet") if e.get(k)]
+    for rel in files:
+        (cfg.packs_dir / rel).unlink(missing_ok=True)
+    for name in ("_embeddings.npz", "_index.json"):
+        (out_dir / name).unlink(missing_ok=True)
+    for d in sorted((d for d in out_dir.rglob("*") if d.is_dir()), key=lambda d: len(d.parts), reverse=True):
+        if not any(d.iterdir()):
+            d.rmdir()
 
 
 def cleanup(cfg: Config, key: str):

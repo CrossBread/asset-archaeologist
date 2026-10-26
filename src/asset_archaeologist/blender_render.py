@@ -96,9 +96,32 @@ def add_colour_map(mat, path):
     return tex
 
 
+UNRESOLVED = []  # image names a file asked for that the pack does not have (reported per item)
+
+
+def has_file(tex):
+    return bool(tex.image.packed_file) or os.path.isfile(bpy.path.abspath(tex.image.filepath))
+
+
+def base_colour_input(mat):
+    if not mat.node_tree:
+        return None
+    bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    return bsdf.inputs["Base Color"] if bsdf else None
+
+
+def plain_default(mat):
+    """True when a material carries no colour of its own (importers' white/grey default)."""
+    inp = base_colour_input(mat)
+    c = inp.default_value if inp is not None and not inp.is_linked else mat.diffuse_color
+    return max(c[:3]) - min(c[:3]) < 0.02 and min(c[:3]) > 0.55
+
+
 def fix_textures(textures, atlas, materials):
-    """Point missing image files at the pack's copies; give bare materials their Unity colour
-    map or the pack atlas. Returns textured | missing | unity | atlas | untextured."""
+    """Point missing image files at the pack's copies; give bare or broken materials their Unity
+    colour map or the pack atlas; let untextured materials show their own colour.
+    Returns textured | unity | atlas | colour | missing | untextured."""
+    UNRESOLVED.clear()
     for img in bpy.data.images:
         if img.source != "FILE" or img.packed_file:
             continue
@@ -109,41 +132,62 @@ def fix_textures(textures, atlas, materials):
         if found:
             img.filepath = found
             img.reload()
-    mats = {s.material for o in bpy.data.objects if o.type == "MESH" for s in o.material_slots if s.material}
+    meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+    mats = {s.material for o in meshes for s in o.material_slots if s.material}
+    uv = any(o.data.uv_layers for o in meshes)
     status = set()
     for m in mats:
+        key = re.sub(r"\.\d{3}$", "", m.name).lower()
         tex = base_color_texture(m)
-        if not tex and materials:
-            path = materials.get(re.sub(r"\.\d{3}$", "", m.name).lower())
-            if path:
-                tex = add_colour_map(m, path)
-                if tex:
-                    status.add("unity")
-        if tex and not (tex.image.packed_file or os.path.isfile(bpy.path.abspath(tex.image.filepath))):
-            # the referenced colour map is not in the pack: try the Unity material's, else drop it
-            # (a missing image renders magenta; plain material colour is closer to the real thing)
-            path = materials.get(re.sub(r"\.\d{3}$", "", m.name).lower()) if materials else None
+        if tex and not has_file(tex):
+            # the referenced colour map is not in the pack: the Unity material's, else the pack
+            # atlas, else drop it (a missing image renders magenta; plain colour is closer)
+            UNRESOLVED.append(os.path.basename(bpy.path.abspath(tex.image.filepath)) or tex.image.name)
+            path = materials.get(key) or atlas
             if path:
                 tex.image = bpy.data.images.load(path, check_existing=True)
-                status.add("unity")
+                status.add("unity" if materials.get(key) else "atlas")
             else:
                 m.node_tree.nodes.remove(tex)
                 tex = None
                 status.add("missing")
+        elif not tex:
+            path = materials.get(key)
+            if not path and atlas and uv and plain_default(m):
+                path = atlas  # Synty / Animpic style: one shared atlas, materials left white
+            if path:
+                tex = add_colour_map(m, path)
+                if tex:
+                    status.add("unity" if materials.get(key) else "atlas")
         if tex:
             m.node_tree.nodes.active = tex  # Workbench shows the active image node
             status.add("textured")
-    if "missing" in status:
-        return "missing"
-    if "unity" in status:
-        return "unity"
-    if status:
-        return "textured"
-    if not atlas or not mats:
-        return "untextured"
-    for m in mats:
-        add_colour_map(m, atlas)
-    return "atlas"
+        else:
+            # Workbench shows the material's active node if it is an image: a missing one is magenta
+            # (KitBash node setups); make the shader the active node instead
+            act = m.node_tree.nodes.active if m.node_tree else None
+            if act is not None and act.type == "TEX_IMAGE" and (not act.image or not has_file(act)):
+                shader = next((n for n in m.node_tree.nodes if n.type.startswith("BSDF") or n.type == "OUTPUT_MATERIAL"), None)
+                if shader:
+                    m.node_tree.nodes.active = shader
+            # Workbench draws a material without an image in its viewport colour, which importers
+            # leave at default grey; copy the shader's base colour (Kenney-style colour materials)
+            inp = base_colour_input(m)
+            if inp is not None and not inp.is_linked:
+                c = inp.default_value
+                m.diffuse_color = (c[0], c[1], c[2], 1.0)
+                status.add("colour")
+    for s in ("missing", "atlas", "unity", "textured", "colour"):
+        if s in status:
+            return s
+    return "untextured"
+
+
+def use_vertex_colours(meshes):
+    """Packs coloured by vertex colours and no textures need Workbench's vertex-colour mode."""
+    if not meshes or not all(getattr(o.data, "color_attributes", None) and len(o.data.color_attributes) for o in meshes):
+        return False
+    return not any(base_color_texture(s.material) for o in meshes for s in o.material_slots if s.material)
 
 
 # ---------- which models are in the file ----------
@@ -157,7 +201,8 @@ def mesh_tree(o):
 
 
 def is_variant_set(meshes):
-    """Two or more meshes, all deformed by the same armature (Synty-style character outfits)."""
+    """Two or more full-size meshes on the same armature: Synty-style character outfits standing
+    in one spot. A modular character (head, torso, hands as separate meshes, Animpic) is one figure."""
     if len(meshes) < 2:
         return False
     arms = set()
@@ -166,7 +211,15 @@ def is_variant_set(meshes):
         if not mods:
             return False
         arms.add(mods[0].object.name)
-    return len(arms) == 1
+    if len(arms) != 1:
+        return False
+    lo, hi, _ = world_bounds(meshes)
+    full = 0
+    for o in meshes:
+        a, b, _ = world_bounds([o])
+        if (b.z - a.z) >= 0.6 * (hi.z - lo.z):
+            full += 1
+    return full >= 2 and full * 2 >= len(meshes)
 
 
 def blend_groups():
@@ -294,16 +347,22 @@ def render_one(item, jobs):
     if item["src"].lower().endswith(".blend"):
         groups = blend_groups()
     else:
-        meshes = [o for o in bpy.data.objects if o.type == "MESH" and not is_helper(o)]
+        bpy.context.view_layer.update()
+        # only what the file shows: importers park helpers in hidden collections (the glTF importer's
+        # bone-display icosphere sat under every character until this)
+        meshes = [o for o in bpy.data.objects if o.type == "MESH" and not is_helper(o) and o.visible_get()]
         for o in bpy.data.objects:
-            if o.type == "MESH" and is_helper(o):
+            if o.type == "MESH" and o not in meshes:
                 o.hide_render = True
         groups = [(o.name, [o]) for o in meshes] if is_variant_set(meshes) else [("", meshes)]
+        if use_vertex_colours(meshes):
+            scene.display.shading.color_type = "VERTEX"
     variants = render_groups(scene, cam, groups, item["out"])
+    extra = {"unresolved": sorted(set(UNRESOLVED))[:5]} if UNRESOLVED else {}
     if len(variants) == 1 and not variants[0]["name"]:
         v = variants[0]
-        return {"size_m": v["size_m"], "tris": v["tris"], "texture": status}
-    return {"variants": variants, "texture": status}
+        return {"size_m": v["size_m"], "tris": v["tris"], "texture": status, **extra}
+    return {"variants": variants, "texture": status, **extra}
 
 
 def safe_name(name):

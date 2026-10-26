@@ -73,3 +73,67 @@ def test_unpack_zip_records_licence(tmp_path):
     members, guids, licences = render.unpack(z, tmp_path / "src")
     assert "Models/a.glb" in members and "../evil.glb" not in members
     assert licences == ["License.txt"]
+
+
+def test_find_atlas_names():
+    def atlas(*names):
+        return render.find_atlas({n.lower(): n for n in names})
+    assert atlas("PolygonTown_Texture_01_A.png", "Texture_01_A_Normal.png") == "PolygonTown_Texture_01_A.png"
+    assert atlas("MainTexture.png", "MainTexture_Emission.png") == "MainTexture.png"
+    assert atlas("T_Main_A.png", "T_Main_Normal.png", "T_Main_Mask.png") == "T_Main_A.png"
+    assert atlas("colormap.png") == "colormap.png"
+    assert atlas("Palette_LUT.png", "Icon_Atlas.png", "Preview_atlas.png") is None
+    assert atlas("wood.png", "stone.png") is None
+
+
+def test_texture_siblings(tmp_path):
+    pack = tmp_path / "kb3d_x.blender.native.zip"
+    for n in ["kb3d_x.blender.native.zip", "kb3d_x.png.2k.zip", "kb3d_x.fbx.zip", "kb3d_xtra.png.2k.zip",
+              "Nature.zip", "Nature_Textures.zip"]:
+        _zip(tmp_path / n, ["a.png"])
+    assert [p.name for p in render.texture_siblings(pack)] == ["kb3d_x.png.2k.zip"]
+    assert [p.name for p in render.texture_siblings(tmp_path / "Nature.zip")] == ["Nature_Textures.zip"]
+    assert render.texture_siblings(tmp_path) == []  # a folder pack has no siblings
+
+
+def test_remove_output_keeps_other_packs(tmp_path):
+    import json
+    cfg = config.Config(libraries=[str(tmp_path / "lib")], output=str(tmp_path / "out"), work=str(tmp_path / "w"))
+    d = cfg.packs_dir / "lib/Pack"
+    (d / "sub").mkdir(parents=True)
+    (d / "sub/a.png").write_text("x")
+    (d / "sub/a.sheet.png").write_text("x")
+    (d / "_contact_01.png").write_text("x")
+    (d / "_embeddings.npz").write_text("x")
+    (d / "_index.json").write_text(json.dumps({"pack": "lib/Pack", "contact_sheets": ["lib/Pack/_contact_01.png"],
+        "models": [{"model": "a.fbx", "thumb": "lib/Pack/sub/a.png", "sheet": "lib/Pack/sub/a.sheet.png"}]}))
+    (d / "Inner").mkdir()
+    (d / "Inner/_index.json").write_text("{}")  # another pack's output below this one
+    render.remove_output(cfg, "lib/Pack")
+    assert sorted(p.relative_to(d).as_posix() for p in d.rglob("*")) == ["Inner", "Inner/_index.json"]
+
+
+def test_read_redo(tmp_path):
+    lib = tmp_path / "lib"
+    _zip(lib / "Kenney/kit.zip", ["a.glb"])
+    cfg = config.Config(libraries=[str(lib)], output=str(tmp_path / "out"), work=str(tmp_path / "w"))
+    f = tmp_path / "redo.txt"
+    f.write_text(f"# packs to redo\nKenney\\other\n\n{lib / 'Kenney/kit.zip'}\n", "utf-8")
+    assert scan.read_redo(cfg, f) == {"Kenney/other", "lib/Kenney/kit"}
+
+
+def test_library_finds_packs_without_walking_pictures(tmp_path):
+    from asset_archaeologist import server
+    cfg = config.Config(libraries=[str(tmp_path / "lib")], output=str(tmp_path / "out"), work=str(tmp_path / "w"))
+    d = cfg.packs_dir / "lib/Pack"
+    d.mkdir(parents=True)
+    ids = np.array(["a.glb", "b.glb"])
+    vecs = np.zeros((2, server.embed.DIM), np.float16)
+    np.savez_compressed(d / "_embeddings.npz", ids=ids, search=vecs, names=vecs, views=vecs)
+    (d / "_index.json").write_text('{"pack": "lib/Pack", "models": [{"model": "a.glb", "name": "a", '
+                                   '"thumb": "lib/Pack/a.png", "sheet": "lib/Pack/a.sheet.png"}]}', "utf-8")
+    (cfg.packs_dir / "lib/Unembedded").mkdir()
+    (cfg.packs_dir / "lib/Unembedded/_index.json").write_text('{"pack": "lib/Unembedded", "models": []}', "utf-8")
+    lib = server.Library(cfg)
+    assert lib.ids == ["a.glb"] and list(lib.packs) == ["lib/Pack"]
+    assert len(lib._packs()) == 2

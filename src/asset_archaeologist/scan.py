@@ -188,9 +188,24 @@ class Status:
         os.replace(tmp, p)
 
 
+def read_redo(cfg: Config, path: Path) -> set[str]:
+    """Pack keys from a file with one pack per line: a key as the page shows it
+    ('Kenney/kenney_nature-kit') or the pack's path. Blank lines and lines starting with '#' are skipped."""
+    keys = set()
+    for line in Path(path).read_text("utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        p = Path(line)
+        keys.add(render.pack_key(cfg, p) if p.exists() else line.replace("\\", "/"))
+    return keys
+
+
 def run(cfg: Config, procs: int = 0, max_packs: int = 0, paths: list[Path] | None = None, force: bool = False,
-        limit: int = 0, only: str = "", keep: bool = False, stop: threading.Event | None = None) -> dict:
-    """Render + embed every pack still to do (or the given paths). Returns a summary."""
+        limit: int = 0, only: str = "", keep: bool = False, stop: threading.Event | None = None,
+        redo: set[str] | None = None) -> dict:
+    """Render + embed every pack still to do (or the given paths). Packs whose key is in redo
+    are rendered again from scratch, their old output deleted first. Returns a summary."""
     from . import embed  # loads torch
 
     cur = read_status(cfg)
@@ -206,7 +221,7 @@ def run(cfg: Config, procs: int = 0, max_packs: int = 0, paths: list[Path] | Non
         packs = [Path(p) for p in paths]
     else:
         st.log("looking for packs in " + ", ".join(str(p) for p in cfg.library_dirs))
-        packs = [p for p in discover(cfg) if force or not done(cfg, p)]
+        packs = [p for p in discover(cfg) if force or not done(cfg, p) or (redo and render.pack_key(cfg, p) in redo)]
     packs = packs[: max_packs or None]
     state_file = cfg.output_dir / "_scan_state.json"
     try:
@@ -226,6 +241,8 @@ def run(cfg: Config, procs: int = 0, max_packs: int = 0, paths: list[Path] | Non
             st.update(pack_index=i, pack=key, pack_models=0, pack_rendered=0)
             t = time.time()
             try:
+                if redo and key in redo:  # nothing stale left next to the new pictures
+                    render.remove_output(cfg, key)
                 ipath = render.do_pack(cfg, p, procs=procs, limit=limit, only=only, progress=lambda d: st.update(**d))
                 ix = json.loads(ipath.read_text("utf-8"))
                 ok = [e for e in ix["models"] if "thumb" in e]
