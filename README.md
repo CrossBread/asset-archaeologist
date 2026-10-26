@@ -285,9 +285,7 @@ each pack's licence before shipping its art.
 
 ## Support and credits
 
-<!-- Donation link goes here once there is one, e.g.:
-[Support Asset Archaeologist](https://example.com/donate)
--->
+If Asset Archaeologist saves you time, you can [buy Jeff a coffee on Ko-fi](https://ko-fi.com/jeffneet).
 
 Made by Jeff Neet. For help with games, tools or AI workflows, Jeff consults through Joybringr:
 [jeffneet.com/joybringr/consulting](https://jeffneet.com/joybringr/consulting).
